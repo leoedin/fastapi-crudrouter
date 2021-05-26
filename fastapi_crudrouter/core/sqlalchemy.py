@@ -1,6 +1,6 @@
 from typing import Any, Callable, List, Type, Generator, Optional, Union
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Response
 
 from . import CRUDGenerator, NOT_FOUND, _utils
 from ._types import DEPENDENCIES, PAGINATION, PYDANTIC_SCHEMA as SCHEMA
@@ -63,14 +63,20 @@ class SQLAlchemyCRUDRouter(CRUDGenerator[SCHEMA]):
 
     def _get_all(self, *args: Any, **kwargs: Any) -> Callable[..., List[Model]]:
         def route(
+            response: Response,
             db: Session = Depends(self.db_func),
             pagination: PAGINATION = self.pagination,
         ) -> List[Model]:
             skip, limit = pagination.get("skip"), pagination.get("limit")
 
+            total: int = db.query(self.db_model).count()
+
             db_models: List[Model] = (
                 db.query(self.db_model).limit(limit).offset(skip).all()
             )
+
+            response.headers["Content-Range"] = f"{skip}-{skip + len(db_models) - 1}/{total}"
+
             return db_models
 
         return route
