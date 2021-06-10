@@ -1,4 +1,4 @@
-from typing import Any, Callable, List, Type, Generator, Optional, Union
+from typing import Any, Callable, List, Dict, Type, Generator, Optional, Union
 
 from fastapi import Depends, HTTPException, Response
 
@@ -66,14 +66,23 @@ class SQLAlchemyCRUDRouter(CRUDGenerator[SCHEMA]):
             response: Response,
             db: Session = Depends(self.db_func),
             pagination: PAGINATION = self.pagination,
+            filter: Optional[Dict[str, Any]] = None,
+            sort: Optional[List[str]] = []
         ) -> List[Model]:
             skip, limit = pagination.get("skip"), pagination.get("limit")
-
+            # Filter is of form {"id":["44022001-a4e1-4434-a0be-85b408903d76","1d0943fc-3046-4158-985b-ae6b2aeb82b7"]}
+            # so JSON with a field
+            
             total: int = db.query(self.db_model).count()
 
-            db_models: List[Model] = (
-                db.query(self.db_model).limit(limit).offset(skip).all()
-            )
+            query = db.query(self.db_model).limit(limit).offset(skip)
+
+            db_models: List[Model]
+            if filter:
+                for attr, value in filter.iteritems():
+                    db_models = query.filter( getattr(self.db_model, attr) == value )
+            else:
+                db_models = query.all()
 
             response.headers["Content-Range"] = f"{skip}-{skip + len(db_models) - 1}/{total}"
 
