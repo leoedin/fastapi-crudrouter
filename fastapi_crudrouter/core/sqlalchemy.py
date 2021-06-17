@@ -7,6 +7,7 @@ from ._types import DEPENDENCIES, PAGINATION, PYDANTIC_SCHEMA as SCHEMA
 import json
 
 try:
+    from sqlalchemy import or_
     from sqlalchemy.orm import Session
     from sqlalchemy.ext.declarative import DeclarativeMeta as Model
     from sqlalchemy.exc import IntegrityError
@@ -80,12 +81,12 @@ class SQLAlchemyCRUDRouter(CRUDGenerator[SCHEMA]):
             if filter:
                 # Filter is of form {"id":["44022001-a4e1-4434-a0be-85b408903d76","1d0943fc-3046-4158-985b-ae6b2aeb82b7"]}
                 # We take it as a string and parse to JSON here, as I couldn't get FastAPI to parse it as JSON as a query param
-                # so JSON with a field
-
                 filter = json.loads(filter)
 
+                # Then loop through each item in the filter dict
                 for attr, value in filter.items():
-                    query = query.filter( getattr(self.db_model, attr) == value )
+                    # Each item is given to us as an array, so we loop through the array and create an OR query based on it
+                    query = query.filter( or_(getattr(self.db_model, attr) == v for v in value) )
 
             # The total possible is the query count
             total: int = query.count()
