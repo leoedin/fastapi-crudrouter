@@ -1,9 +1,10 @@
 from typing import Any, Callable, List, Dict, Type, Generator, Optional, Union
 
-from fastapi import Depends, HTTPException, Response
+from fastapi import Depends, HTTPException, Response, Query
 
 from . import CRUDGenerator, NOT_FOUND, _utils
 from ._types import DEPENDENCIES, PAGINATION, PYDANTIC_SCHEMA as SCHEMA
+import json
 
 try:
     from sqlalchemy.orm import Session
@@ -66,23 +67,31 @@ class SQLAlchemyCRUDRouter(CRUDGenerator[SCHEMA]):
             response: Response,
             db: Session = Depends(self.db_func),
             pagination: PAGINATION = self.pagination,
-            filter: Optional[Dict[str, Any]] = None,
-            sort: Optional[List[str]] = []
+            filter: str = None,
+            sort: str = None
         ) -> List[Model]:
             skip, limit = pagination.get("skip"), pagination.get("limit")
-            # Filter is of form {"id":["44022001-a4e1-4434-a0be-85b408903d76","1d0943fc-3046-4158-985b-ae6b2aeb82b7"]}
-            # so JSON with a field
-            
-            total: int = db.query(self.db_model).count()
+            #sort = json.loads(sort)
 
-            query = db.query(self.db_model).limit(limit).offset(skip)
+            # Get the raw query first
+            query = db.query(self.db_model)
 
-            db_models: List[Model]
+            # Then, if we have criteria, filter the raw query
             if filter:
-                for attr, value in filter.iteritems():
-                    db_models = query.filter( getattr(self.db_model, attr) == value )
-            else:
-                db_models = query.all()
+                # Filter is of form {"id":["44022001-a4e1-4434-a0be-85b408903d76","1d0943fc-3046-4158-985b-ae6b2aeb82b7"]}
+                # We take it as a string and parse to JSON here, as I couldn't get FastAPI to parse it as JSON as a query param
+                # so JSON with a field
+
+                filter = json.loads(filter)
+
+                for attr, value in filter.items():
+                    query = query.filter( getattr(self.db_model, attr) == value )
+
+            # The total possible is the query count
+            total: int = query.count()
+
+            # And then apply the limit, offset, and get everything
+            db_models: List[Model] = query.limit(limit).offset(skip).all()
 
             response.headers["Content-Range"] = f"{skip}-{skip + len(db_models) - 1}/{total}"
 
